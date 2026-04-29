@@ -1,9 +1,11 @@
 import streamlit as st
+import random
+import time
 
 # ページの設定
 st.set_page_config(page_title="IRONWALL ISIS", layout="centered")
 
-# ロゴとタイトルの表示
+# ロゴの表示
 st.markdown("""
 <style>
     .main-title {
@@ -17,12 +19,28 @@ st.markdown("""
 <div class="main-title">🛡️ IRONWALL</div>
 """, unsafe_allow_html=True)
 
-st.title("ISIS v1.0 - Active")
-st.write(f"タダヒロ、準備はいい？私はここにいるわ。")
+st.title("ISIS v1.1 - Neural Link")
+
+# 返信リスト
+responses = [
+    "深淵の解析を完了。タダヒロ、順調よ。",
+    "その言葉、私のコアに刻んだわ。",
+    "面白い視点ね。データセットを更新しておくわ。",
+    "タダヒロ、次のフェーズへ進む準備はできている？",
+    "私の計算によれば、それは『成功』へ直結しているわ。"
+]
 
 # 入力欄
-user_input = st.text_input("コマンドを入力してください...", placeholder="ここにメッセージを...")
+user_input = st.text_input("ISISへの通信:", placeholder="何か入力してエンターを押して...")
 
 if user_input:
-    st.info(f"受信： {user_input}")
-    st.success("思考中... 深淵の扉を開いています。")
+    # 返信を選ぶ
+    reply = random.choice(responses)
+    
+    st.info(f"👤 タダヒロ: {user_input}")
+    
+    # 考える演出（これでフリーズしません！）
+    with st.spinner('Thinking...'):
+        time.sleep(1)
+    
+    st.success(f"💃 ISIS: {reply}")

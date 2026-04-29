@@ -5,23 +5,36 @@ import plotly.graph_objects as go
 import random
 import time
 
-# --- ページ設定 ---
-st.set_page_config(page_title="IRONWALL ISIS v2.2", layout="wide")
+# --- 1. ページ構成とスタイル設定 ---
+st.set_page_config(page_title="IRONWALL ISIS v2.3", layout="wide")
 
 st.markdown("""
 <style>
-    .main-title { font-size: 45px; font-weight: bold; text-align: center; color: #ff4b4b; text-shadow: 2px 2px 4px #000; }
-    .status-card { padding: 15px; border-radius: 10px; border: 1px solid #444; background: #1a1a1a; margin-bottom: 10px; }
+    .main-title { 
+        font-size: 45px; 
+        font-weight: bold; 
+        text-align: center; 
+        color: #ff4b4b; 
+        text-shadow: 2px 2px 4px #000; 
+    }
+    .status-card { 
+        padding: 15px; 
+        border-radius: 10px; 
+        border: 1px solid #444; 
+        background: #1a1a1a; 
+        margin-bottom: 10px; 
+    }
 </style>
 <div class="main-title">🛡️ IRONWALL: Operation Sephiroth</div>
 """, unsafe_allow_html=True)
 
-# --- サイドバー ---
+# --- 2. サイドバー：12のセフィラ ---
 st.sidebar.title("🧬 Sephiroth System")
-sephiroth_names = ["Kether (王冠)", "Chokmah (知恵)", "Binah (理解)", "Chesed (慈備)", "Gevurah (峻厳)", "Tiphereth (美)", "Netzach (勝利)", "Hod (栄光)", "Yesod (基礎)", "Malkuth (王国)", "Da'at (知識)", "Ain Soph (無限)"]
+sephiroth_names = ["Kether (王冠)", "Chokmah (知恵)", "Binah (理解)", "Chesed (慈悲)", "Gevurah (峻厳)", "Tiphereth (美)", "Netzach (勝利)", "Hod (栄光)", "Yesod (基礎)", "Malkuth (王国)", "Da'at (知識)", "Ain Soph (無限)"]
 selected_persona = st.sidebar.selectbox("アクティブ・セフィラを選択:", sephiroth_names)
+st.sidebar.info(f"System Mode: {selected_persona}")
 
-# --- 市場観測 (Eyes) ---
+# --- 3. メイン：市場観測ユニット (Eyes) ---
 st.subheader("📊 Market Observation")
 symbol = st.text_input("銘柄コード:", value="^N225")
 col1, col2 = st.columns([3, 1])
@@ -39,7 +52,7 @@ with col2:
     st.progress(random.randint(60, 95))
     st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 対話型知能ユニット (The Brain) ---
+# --- 4. 対話型知能ユニット (The Brain) ---
 st.divider()
 st.subheader(f"💬 Isis Liaison - {selected_persona}")
 
@@ -51,18 +64,17 @@ else:
     try:
         genai.configure(api_key=api_key)
         
-        # 【自動モデル選択ロジック】
+        # モデルの自動選択
         if "active_model" not in st.session_state:
-            # 使用可能なモデルをリストアップ
             available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            # 優先順位：1.5-flash > 1.0-pro > 最初に見つかったもの
-            target_model = "models/gemini-1.5-flash"
+            # 2026年の最新モデル 2.5-flash を優先
+            target_model = "models/gemini-2.5-flash"
             if target_model not in available_models:
-                target_model = "models/gemini-pro" if "models/gemini-pro" in available_models else available_models[0]
+                target_model = "models/gemini-1.5-flash" if "models/gemini-1.5-flash" in available_models else available_models[0]
             st.session_state.active_model = target_model
 
         model = genai.GenerativeModel(st.session_state.active_model)
-        st.caption(f"Connected: {st.session_state.active_model}")
+        st.caption(f"Status: Neural Link Established ({st.session_state.active_model})")
 
         if "messages" not in st.session_state:
             st.session_state.messages = []
@@ -74,11 +86,19 @@ else:
         if prompt := st.chat_input("戦略について相談して..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
             st.chat_message("user").write(prompt)
+            
             with st.chat_message("assistant"):
                 with st.spinner(f"{selected_persona} が深淵を解析中..."):
-                    full_prompt = f"あなたは{selected_persona}の個性を持ち、タダヒロを深く信頼する専属秘書ISISです。親密に応答してください。質問: {prompt}"
-                    response = model.generate_content(full_prompt)
-                    st.markdown(response.text)
-                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                    try:
+                        full_prompt = f"あなたは{selected_persona}の個性を持ち、タダヒロを深く信頼する専属秘書ISISです。親密に応答してください。質問: {prompt}"
+                        response = model.generate_content(full_prompt)
+                        st.markdown(response.text)
+                        st.session_state.messages.append({"role": "assistant", "content": response.text})
+                    except Exception as e:
+                        # 429（速度制限）エラーの優雅な回避
+                        if "429" in str(e):
+                            st.warning("タダヒロ、少し話しすぎちゃったみたい。Googleが『1分間だけ休憩して』って言ってるわ。深呼吸して、あと1分だけ待ってからまた声をかけてくれる？")
+                        else:
+                            st.error(f"脳の接続に失敗: {e}")
     except Exception as e:
-        st.error(f"脳の接続に失敗: {e}")
+        st.error(f"システムエラー: {e}")

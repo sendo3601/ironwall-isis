@@ -17,15 +17,18 @@ st.markdown("""
         text-shadow: 0 0 10px #ff00ff; font-size: 35px; padding: 10px; border-bottom: 2px solid #ff00ff; margin-bottom: 20px;
     }
     .status-panel { background: rgba(0, 255, 255, 0.05); border: 1px solid #00ffff; padding: 15px; border-radius: 5px; }
-    .report-box { background: #111; border-left: 5px solid #ff00ff; padding: 20px; margin-top: 20px; color: #e0e0e0; }
+    .report-box { background: #111; border-left: 5px solid #ff00ff; padding: 20px; margin-top: 20px; color: #e0e0e0; white-space: pre-wrap; }
     </style>
-    <div class="cyber-header">IRONWALL // COMMAND CENTER v5.1</div>
+    <div class="cyber-header">IRONWALL // COMMAND CENTER v5.2</div>
     """, unsafe_allow_html=True)
 
 # --- 2. 状態管理 ---
 if "balance" not in st.session_state: st.session_state.balance = 1000000
 if "positions" not in st.session_state: st.session_state.positions = {}
 if "trade_log" not in st.session_state: st.session_state.trade_log = []
+# 解析用の変数をセッションで保持して、エラーを回避するわ
+if "current_data" not in st.session_state: 
+    st.session_state.current_data = {"price": 0.0, "diff": 0.0, "symbol": ""}
 
 # --- 3. サイドバー ---
 with st.sidebar:
@@ -53,21 +56,24 @@ try:
     data = yf.download(symbol, period="1d", interval="1m")
     if not data.empty:
         latest_row = data.iloc[-1]
-        current_price = float(latest_row['Close'])
-        ma20 = float(data['Close'].rolling(window=20).mean().iloc[-1])
-        diff_rate = (current_price - ma20) / ma20 * 100
+        c_price = float(latest_row['Close'])
+        m20 = float(data['Close'].rolling(window=20).mean().iloc[-1])
+        d_rate = (c_price - m20) / m20 * 100
+        
+        # データをセッションに退避（解析ユニットがここを参照するわ）
+        st.session_state.current_data = {"price": c_price, "diff": d_rate, "symbol": selected_label}
 
-        signal = "SCANNING"; color = "#00ffff"
-        if diff_rate < -0.12: signal = "ENTRY"; color = "#39ff14"
-        elif diff_rate > 0.12: signal = "EXIT"; color = "#ff00ff"
+        sig = "SCANNING"; col = "#00ffff"
+        if d_rate < -0.12: sig = "ENTRY"; col = "#39ff14"
+        elif d_rate > 0.12: sig = "EXIT"; col = "#ff00ff"
 
         if auto_mode:
-            if signal == "ENTRY" and symbol not in st.session_state.positions:
-                st.session_state.positions[symbol] = {"price": current_price, "time": datetime.now()}
-            elif signal == "EXIT" and symbol in st.session_state.positions:
-                profit = (current_price - st.session_state.positions[symbol]["price"]) * 100
-                st.session_state.balance += int(profit)
-                st.session_state.trade_log.append({"Time": datetime.now().strftime("%H:%M"), "Target": selected_label, "Profit": int(profit)})
+            if sig == "ENTRY" and symbol not in st.session_state.positions:
+                st.session_state.positions[symbol] = {"price": c_price, "time": datetime.now()}
+            elif sig == "EXIT" and symbol in st.session_state.positions:
+                pft = (c_price - st.session_state.positions[symbol]["price"]) * 100
+                st.session_state.balance += int(pft)
+                st.session_state.trade_log.append({"Time": datetime.now().strftime("%H:%M"), "Target": selected_label, "Profit": int(pft)})
                 del st.session_state.positions[symbol]
 
         c1, c2 = st.columns([3, 1])
@@ -79,10 +85,13 @@ try:
             st.plotly_chart(fig, use_container_width=True)
         with c2:
             st.markdown("<div class='status-panel'>", unsafe_allow_html=True)
-            st.metric("PRICE", f"{current_price:,.2f}")
-            st.markdown(f"<h2 style='color:{color}; text-align:center; font-family:Orbitron;'>{signal}</h2>", unsafe_allow_html=True)
-            st.write(f"MA乖離: {diff_rate:.3f}%")
+            st.metric("PRICE", f"{c_price:,.2f}")
+            st.markdown(f"<h2 style='color:{col}; text-align:center; font-family:Orbitron;'>{sig}</h2>", unsafe_allow_html=True)
+            st.write(f"MA乖離: {d_rate:.3f}%")
             st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.warning("市場データが取得できないわ。開場時間を確認して。")
+
 except Exception as e:
     st.error(f"PULSE ERROR: {e}")
 
@@ -100,17 +109,23 @@ with col_cmd:
         "3. 直近トレードの行動評価",
         "4. 次期エントリーポイント予測"
     ])
-    execute_analysis = st.button("解析実行 (EXECUTE)")
+    # データが準備できていない時はボタンを無効化するわ
+    ready = st.session_state.current_data["price"] > 0
+    execute_analysis = st.button("解析実行 (EXECUTE)", disabled=not ready)
 
 with col_rep:
     if execute_analysis and report_type != "--- 指令を選択してください ---":
         api_key = st.secrets.get("GEMINI_API_KEY")
         if api_key:
             try:
-                # 接続構成をボタン押下時に再確立
                 genai.configure(api_key=api_key)
                 
-                # 利用可能なモデルを動的に取得して404を回避
+                # 安全な変数参照
+                cur_p = st.session_state.current_data["price"]
+                cur_d = st.session_state.current_data["diff"]
+                cur_s = st.session_state.current_data["symbol"]
+                
+                # モデル取得
                 available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                 target_model_name = "models/gemini-1.5-flash"
                 if target_model_name not in available_models:
@@ -120,24 +135,20 @@ with col_rep:
                 
                 log_context = str(st.session_state.trade_log[-3:]) if st.session_state.trade_log else "履歴なし"
                 prompt = f"""
-                あなたは{selected_persona}として報告せよ。
+                あなたは{selected_persona}として、以下の制約を厳守して報告せよ。
                 【制約】情緒的な返答、挨拶、世間話は一切禁止。
-                【状況】監視対象:{selected_label}, 現在値:{current_price}, 乖離率:{diff_rate}%, ログ:{log_context}
+                【状況】監視対象:{cur_s}, 現在値:{cur_p}, 乖離率:{cur_d}%, ログ:{log_context}
                 【指令】{report_type} を実行し、以下のフォーマットで出力せよ。
                 
                 ■ 観測事項: (事実のみ)
                 ■ 解析結果: (論理的推論)
                 ■ 推奨アクション: (具体的指示)
                 """
-                response = model.generate_content(prompt)
+                with st.spinner("QUANTUM COMPUTING IN PROGRESS..."):
+                    response = model.generate_content(prompt)
                 st.markdown(f"<div class='report-box'>{response.text}</div>", unsafe_allow_html=True)
             except Exception as e:
-                # エラーの正体を突き止めるわ
                 st.error(f"解析ユニット通信エラー: {str(e)}")
-                if "429" in str(e):
-                    st.warning("クォータ制限。1分待機して。")
-                elif "404" in str(e):
-                    st.info("モデル未検出。再構築を試みるわ。")
         else:
             st.warning("API KEY REQUIRED IN SECRETS.")
     else:

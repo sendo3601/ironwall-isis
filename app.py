@@ -20,7 +20,7 @@ st.markdown("""
     .status-panel { background: rgba(0, 255, 255, 0.05); border: 1px solid #00ffff; padding: 15px; border-radius: 5px; }
     .report-box { background: #111; border-left: 5px solid #ff00ff; padding: 20px; margin-top: 20px; color: #e0e0e0; white-space: pre-wrap; }
     </style>
-    <div class="cyber-header">IRONWALL // STRATEGIC CORE v5.4</div>
+    <div class="cyber-header">IRONWALL // STRATEGIC CORE v5.5</div>
     """, unsafe_allow_html=True)
 
 # --- 2. 状態管理 & 自動更新 ---
@@ -53,10 +53,14 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
-# --- データ取得層（キャッシュによる保護） ---
+# --- データ取得層（キャッシュによる保護 & MultiIndex対策） ---
 @st.cache_data(ttl=60)
 def fetch_market_data(ticker):
-    return yf.download(ticker, period="1d", interval="1m", progress=False)
+    df = yf.download(ticker, period="1d", interval="1m", progress=False)
+    # yfinance最新版の仕様変更対策: カラムが多層(MultiIndex)なら1層に潰す
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df
 
 # --- 4. リアルタイム観測ユニット（使徒別ロジック実装） ---
 try:

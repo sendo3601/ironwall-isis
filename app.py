@@ -6,7 +6,7 @@ import pandas as pd
 st.set_page_config(page_title="IRONWALL ISIS Terminal", layout="centered")
 
 # デザイン（CSS）で少し雰囲気を出すわ
-st.markdown("""
+st.markdown("""...""", unsafe_allow_html=True)
     <style>
     .main { background-color: #0e1117; color: #e0e0e0; }
     .stButton>button { width: 100%; border-radius: 20px; height: 3em; background-color: #4B0082; color: white; }

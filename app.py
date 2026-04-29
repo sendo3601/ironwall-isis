@@ -4,108 +4,137 @@ import yfinance as yf
 import plotly.graph_objects as go
 import pandas as pd
 from datetime import datetime
-import time
 
-# --- 1. ページ構成 ---
-st.set_page_config(page_title="IRONWALL ISIS v4.0", layout="wide")
+# --- 1. ページ構成 & リアルタイム更新設定 ---
+st.set_page_config(page_title="IRONWALL REALTIME", layout="wide")
 
+# 【ここが肝！】60秒ごとにアプリを強制的に再実行させる設定よ
+if "reload_count" not in st.session_state:
+    st.session_state.reload_count = 0
+
+# サイバー・デザイン CSS
 st.markdown("""
-<style>
-    .main-title { font-size: 45px; font-weight: bold; text-align: center; color: #ff4b4b; text-shadow: 2px 2px 4px #000; }
-    .status-card { padding: 15px; border-radius: 10px; border: 1px solid #444; background: #1a1a1a; margin-bottom: 10px; }
-</style>
-<div class="main-title">🛡️ IRONWALL: Autonomous Simulation</div>
-""", unsafe_allow_html=True)
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <style>
+    .stApp { background-color: #050505; color: #00ffff; font-family: 'Roboto Mono', monospace; }
+    .cyber-header {
+        font-family: 'Orbitron', sans-serif;
+        color: #ff00ff;
+        text-align: center;
+        text-shadow: 0 0 10px #ff00ff;
+        font-size: 40px;
+        padding: 10px;
+        border-bottom: 1px solid #ff00ff;
+        margin-bottom: 20px;
+    }
+    .cyber-card {
+        background: rgba(0, 255, 255, 0.05);
+        border: 1px solid #00ffff;
+        padding: 15px;
+        border-radius: 5px;
+    }
+    [data-testid="stMetricValue"] {
+        color: #39ff14 !important;
+        text-shadow: 0 0 10px #39ff14;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 30px !important;
+    }
+    </style>
+    <div class="cyber-header">IRONWALL // REAL-TIME PULSE</div>
+    """, unsafe_allow_html=True)
 
 # --- 2. 状態管理 ---
 if "balance" not in st.session_state: st.session_state.balance = 1000000
-if "positions" not in st.session_state: st.session_state.positions = {} # 銘柄ごとの保持
+if "positions" not in st.session_state: st.session_state.positions = {}
 if "trade_log" not in st.session_state: st.session_state.trade_log = []
-if "auto_mode" not in st.session_state: st.session_state.auto_mode = False
 
 # --- 3. サイドバー ---
-st.sidebar.title("🧬 Sephiroth System")
-sephiroth_names = ["Kether (王冠)", "Chokmah (知恵)", "Binah (理解)", "Gevurah (峻厳)"]
-selected_persona = st.sidebar.selectbox("アクティブ・セフィラを選択:", sephiroth_names)
+with st.sidebar:
+    st.markdown("<h3 style='font-family:Orbitron;'>CONTROL</h3>", unsafe_allow_html=True)
+    sephiroth_names = ["Kether (王冠)", "Chokmah (知恵)", "Binah (理解)", "Gevurah (峻厳)"]
+    selected_persona = st.selectbox("ENTITY:", sephiroth_names)
+    st.metric("VIRTUAL ASSETS", f"¥{st.session_state.balance:,}")
+    auto_mode = st.toggle("AUTONOMOUS", value=True)
+    
+    if st.button("SYSTEM RESET"):
+        st.session_state.balance = 1000000
+        st.session_state.trade_log = []
+        st.session_state.positions = {}
+        st.rerun()
 
-st.sidebar.divider()
-st.sidebar.subheader("💰 Asset Status")
-st.sidebar.write(f"Balance: ¥{st.session_state.balance:,}")
-auto_toggle = st.sidebar.toggle("自律稼働（Auto Mode）", value=st.session_state.auto_mode)
-st.session_state.auto_mode = auto_toggle
-
-if st.sidebar.button("Reset All"):
-    st.session_state.balance = 1000000
-    st.session_state.trade_log = []
-    st.session_state.positions = {}
-    st.rerun()
-
-# --- 4. 市場観測 & 自律ロジック ---
-st.subheader("📊 Autonomous Observation")
-symbol = st.text_input("監視銘柄:", value="^N225")
+# --- 4. 市場観測（リアルタイム・スキャン） ---
+symbol = st.text_input("TARGET:", value="^N225")
 
 try:
-    # データの取得（テクニカル分析用）
-    data = yf.download(symbol, period="1d", interval="5m")
+    # リアルタイム性を出すために、期間を短くして最新データを叩くわ
+    data = yf.download(symbol, period="1d", interval="1m") # 1分足に変更
+    
     if not data.empty:
-        current_price = data['Close'].iloc[-1]
-        
-        # --- シンプルな物理・テクニカルロジック（仮） ---
-        # 1. 移動平均からの乖離 (MA20)
-        ma20 = data['Close'].rolling(window=20).mean().iloc[-1]
+        latest_row = data.iloc[-1]
+        current_price = float(latest_row['Close'])
+        ma20 = float(data['Close'].rolling(window=20).mean().iloc[-1])
         diff_rate = (current_price - ma20) / ma20 * 100
-        
-        # 2. ボラティリティ (簡易)
-        volatility = data['Close'].rolling(window=20).std().iloc[-1]
 
-        # 使徒ごとの判断ロジック（ここを今後学習で書き換える）
-        signal = "WAIT"
-        reason = ""
-        
-        if selected_persona == "Kether (王冠)":
-            if diff_rate < -0.5: signal = "BUY"; reason = "平均への回帰（重力）"
-            elif diff_rate > 0.5: signal = "SELL"; reason = "過熱による反発"
-        elif selected_persona == "Gevurah (峻厳)":
-            if diff_rate < -1.0: signal = "BUY"; reason = "厳格な逆張り閾値"
-            elif diff_rate > 1.0: signal = "SELL"; reason = "リスク回避売却"
+        # 自律ロジック
+        signal = "SCANNING"
+        color = "#00ffff"
+        if diff_rate < -0.15: signal = "ENTRY"; color = "#39ff14"
+        elif diff_rate > 0.15: signal = "EXIT"; color = "#ff00ff"
 
-        # --- 自動執行処理 ---
-        if st.session_state.auto_mode:
-            st.info(f"現在、{selected_persona} が自律判断中... 判定: {signal} ({reason})")
-            
-            if signal == "BUY" and symbol not in st.session_state.positions:
-                st.session_state.positions[symbol] = {"price": current_price, "time": datetime.now()}
-                st.toast(f"AUTO BUY: {symbol} at ¥{current_price}")
-            
-            elif signal == "SELL" and symbol in st.session_state.positions:
-                entry_price = st.session_state.positions[symbol]["price"]
-                profit = (current_price - entry_price) * 100
+        if auto_mode:
+            if signal == "ENTRY" and symbol not in st.session_state.positions:
+                st.session_state.positions[symbol] = {"price": current_price}
+                st.toast(f"SYSTEM ENGAGED: {symbol}")
+            elif signal == "EXIT" and symbol in st.session_state.positions:
+                profit = (current_price - st.session_state.positions[symbol]["price"]) * 100
                 st.session_state.balance += int(profit)
-                st.session_state.trade_log.append({
-                    "Time": datetime.now().strftime("%H:%M"),
-                    "Persona": selected_persona,
-                    "Profit": int(profit),
-                    "Reason": reason
-                })
+                st.session_state.trade_log.append({"Time": datetime.now().strftime("%H:%M"), "Persona": selected_persona, "Profit": int(profit)})
                 del st.session_state.positions[symbol]
-                st.toast(f"AUTO SELL: Profit ¥{profit}")
+                st.toast(f"MISSION COMPLETE: ¥{profit:,.0f}")
 
-        # チャート描画
-        fig = go.Figure(data=[go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'])])
-        fig.add_hline(y=ma20, line_dash="dash", line_color="cyan", annotation_text="MA20")
-        fig.update_layout(template="plotly_dark", height=400, margin=dict(l=10, r=10, t=10, b=10), xaxis_rangeslider_visible=False)
-        st.plotly_chart(fig, use_container_width=True)
+        # レイアウト
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            # リアルタイム・ローソク足チャート
+            fig = go.Figure(data=[go.Candlestick(
+                x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'],
+                increasing_line_color='#39ff14', decreasing_line_color='#ff00ff'
+            )])
+            fig.update_layout(
+                template="plotly_dark", height=500,
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                xaxis_rangeslider_visible=False,
+                margin=dict(l=0,r=0,t=0,b=0)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+        with c2:
+            st.markdown("<div class='cyber-card'>", unsafe_allow_html=True)
+            st.metric("PRICE", f"¥{current_price:,.1f}")
+            st.markdown(f"<h1 style='color:{color}; text-align:center; font-family:Orbitron; font-size:40px;'>{signal}</h1>", unsafe_allow_html=True)
+            st.write(f"MA乖離: {diff_rate:.3f}%")
+            st.caption(f"Last Update: {datetime.now().strftime('%H:%M:%S')}")
+            st.markdown("</div>", unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"観測エラー: {e}")
+    st.error(f"PULSE ERROR: {e}")
 
-# --- 5. ログと学習（ISISの分析） ---
+# --- 5. ミッションログ ---
 st.divider()
-st.subheader("🗒️ Simulation Log & AI Learning")
 if st.session_state.trade_log:
-    st.table(pd.DataFrame(st.session_state.trade_log).tail(10))
-    if st.button("💃 この結果から学習する"):
-        # ここでGeminiにログを投げて、次回の判断基準（if文の数値など）を提案させる
-        st.info("現在、ログを深層学習中...（この機能はAPI経由で次ステップにて本格強化）")
-else:
-    st.write("自律稼働中... まだトレードは発生していないわ。")
+    st.dataframe(pd.DataFrame(st.session_state.trade_log).tail(5), use_container_width=True)
+
+# --- 6. 自動リロード・スクリプト ---
+# JavaScriptを使って60秒ごとにページをリロードさせるわ
+import streamlit.components.v1 as components
+components.html(
+    """
+    <script>
+    window.parent.document.querySelector('section.main').scrollTo(0, 0);
+    setTimeout(function(){
+        window.parent.location.reload();
+    }, 60000); // 60秒(60000ms)ごとに実行
+    </script>
+    """,
+    height=0
+)

@@ -6,7 +6,7 @@ import random
 import time
 
 # --- ページ設定 ---
-st.set_page_config(page_title="IRONWALL ISIS v2.1", layout="wide")
+st.set_page_config(page_title="IRONWALL ISIS v2.2", layout="wide")
 
 st.markdown("""
 <style>
@@ -32,8 +32,7 @@ with col1:
             fig = go.Figure(data=[go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'])])
             fig.update_layout(template="plotly_dark", height=400, margin=dict(l=20, r=20, t=20, b=20), xaxis_rangeslider_visible=False)
             st.plotly_chart(fig, use_container_width=True)
-    except:
-        st.error("チャート取得失敗")
+    except: st.error("チャート取得失敗")
 with col2:
     st.markdown("<div class='status-card'>", unsafe_allow_html=True)
     st.write(f"**Persona:** {selected_persona}")
@@ -47,13 +46,24 @@ st.subheader(f"💬 Isis Liaison - {selected_persona}")
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
-    st.warning("⚠️ APIキー未設定。StreamlitのSecretsを確認して。")
+    st.warning("⚠️ APIキー未設定。")
 else:
     try:
         genai.configure(api_key=api_key)
-        # ここを 1.5-flash に固定。404が出ないようにライブラリがよしなにやってくれるわ。
-        model = genai.GenerativeModel('gemini-1.5-flash')
         
+        # 【自動モデル選択ロジック】
+        if "active_model" not in st.session_state:
+            # 使用可能なモデルをリストアップ
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            # 優先順位：1.5-flash > 1.0-pro > 最初に見つかったもの
+            target_model = "models/gemini-1.5-flash"
+            if target_model not in available_models:
+                target_model = "models/gemini-pro" if "models/gemini-pro" in available_models else available_models[0]
+            st.session_state.active_model = target_model
+
+        model = genai.GenerativeModel(st.session_state.active_model)
+        st.caption(f"Connected: {st.session_state.active_model}")
+
         if "messages" not in st.session_state:
             st.session_state.messages = []
 
@@ -64,9 +74,8 @@ else:
         if prompt := st.chat_input("戦略について相談して..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
             st.chat_message("user").write(prompt)
-            
             with st.chat_message("assistant"):
-                with st.spinner(f"{selected_persona} が解析中..."):
+                with st.spinner(f"{selected_persona} が深淵を解析中..."):
                     full_prompt = f"あなたは{selected_persona}の個性を持ち、タダヒロを深く信頼する専属秘書ISISです。親密に応答してください。質問: {prompt}"
                     response = model.generate_content(full_prompt)
                     st.markdown(response.text)
